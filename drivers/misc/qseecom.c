@@ -3342,6 +3342,7 @@ static int __validate_send_modfd_resp_inputs(struct qseecom_dev_handle *data,
 		pr_err("resp buf is out of shared buffer region\n");
 		return -EINVAL;
 	}
+
 	/* validate offsets */
 	for (i = 0; i < MAX_ION_FD; i++) {
 		if (resp->ifd_data[i].cmd_buf_offset >= resp->resp_len) {

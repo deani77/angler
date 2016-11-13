@@ -1249,6 +1249,16 @@ static void wcd_cpe_svc_event_cb(const struct cpe_svc_notification *param)
 		complete(&core->online_compl);
 		break;
 	case CPE_SVC_OFFLINE:
+
+		/*
+		 * offline can happen during normal shutdown,
+		 * but we are interested in offline only during
+		 * SSR.
+		 */
+		if (core->ssr_type != WCD_CPE_SSR_EVENT &&
+		    core->ssr_type != WCD_CPE_BUS_DOWN_EVENT)
+			break;
+
 		active_sessions = wcd_cpe_lsm_session_active();
 		wcd_cpe_change_online_state(core, 0);
 		complete(&core->offline_compl);
@@ -1764,7 +1774,7 @@ void wcd_cpe_cmi_lsm_callback(const struct cmi_api_notification *param)
 
 		u8 *payload = ((u8 *)param->message) + (sizeof(struct cmi_hdr));
 		u8 result = payload[0];
-		lsm_session->cmd_err_code |= result;
+		lsm_session->cmd_err_code = result;
 		complete(&lsm_session->cmd_comp);
 
 	} else if (hdr->opcode == CPE_LSM_SESSION_CMDRSP_SHARED_MEM_ALLOC) {
