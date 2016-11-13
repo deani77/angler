@@ -42,9 +42,20 @@ if  grep -qr forceencrypt /tmp/ramdisk/fstab.angler; then
    sed -i "s/forceencrypt/encryptable/" /tmp/ramdisk/fstab.angler
 fi
 
+if  grep -qr forceencrypt /tmp/ramdisk/fstab.angler; then
+   sed -i "s/forcefdeorfbe/encryptable/" /tmp/ramdisk/fstab.angler
+fi
+
 #Disable dm_verity
 if  grep -qr verify=/dev/block/platform/msm_sdcc.1/by-name/metadata /tmp/ramdisk/fstab.angler; then
    sed -i "s/\,verify\=\/dev\/block\/platform\/msm_sdcc\.1\/by\-name\/metadata//" /tmp/ramdisk/fstab.angler
+fi
+
+if  grep -qr verify=/dev/block/platform/soc.0/f9824900.sdhci/by-name/metadata /tmp/ramdisk/fstab.angler; then
+   sed -i "s/\,verify\=\/dev\/block\/platform\/soc\.0\/f9824900\.sdhci\/by\-name\/metadata//" /tmp/ramdisk/fstab.angler
+fi
+if  grep -qr verify=/dev/block/platform/soc.0/f9824900.sdhci/by-name/metadata /tmp/ramdisk/fstab.angler; then
+   sed -i "s/\,verify\=\/dev\/block\/platform\/soc\.0\/f9824900\.sdhci\/by\-name\/metadata//" /tmp/ramdisk/fstab.angler
 fi
 
 chmod 777 /tmp/ramdisk/boot.img-ramdisk.gz
