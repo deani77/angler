@@ -251,20 +251,6 @@ struct hmp_sched_stats {
 	u64 cumulative_runnable_avg;
 };
 
-struct hmp_power_cost {
-	unsigned int freq;
-	unsigned int *power_cost;
-	u64 demand;
-};
-
-struct hmp_power_cost_table {
-	int len;
-	struct hmp_power_cost *map;
-};
-
-extern bool have_sched_same_pwr_cost_cpus;
-extern cpumask_var_t sched_same_pwr_cost_cpus;
-
 #endif
 
 /* CFS-related fields in a runqueue */
@@ -411,9 +397,6 @@ struct root_domain {
 	cpumask_var_t span;
 	cpumask_var_t online;
 
-	/* Indicate more than one runnable task for any CPU */
-	bool overload;
-
 	/*
 	 * The "RT overload" flag: it gets set if a CPU has more than
 	 * one runnable RT task.
@@ -497,10 +480,9 @@ struct rq {
 
 	unsigned long cpu_power;
 
-	struct callback_head *balance_callback;
-
 	unsigned char idle_balance;
 	/* For active balancing */
+	int post_schedule;
 	int active_balance;
 	int push_cpu;
 	struct task_struct *push_task;
@@ -543,11 +525,8 @@ struct rq {
 	u64 avg_irqload;
 	u64 irqload_ts;
 
-	struct hmp_power_cost_table pwr_cost_table;
-
 #ifdef CONFIG_SCHED_FREQ_INPUT
 	unsigned int old_busy_time;
-	int notifier_sent;
 #endif
 #endif
 
@@ -620,32 +599,7 @@ DECLARE_PER_CPU(struct rq, runqueues);
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
 #define raw_rq()		(&__raw_get_cpu_var(runqueues))
 
-static inline u64 rq_clock(struct rq *rq)
-{
-	return rq->clock;
-}
-
-static inline u64 rq_clock_task(struct rq *rq)
-{
-	return rq->clock_task;
-}
-
 #ifdef CONFIG_SMP
-
-static inline void
-queue_balance_callback(struct rq *rq,
-		       struct callback_head *head,
-		       void (*func)(struct rq *rq))
-{
-	lockdep_assert_held(&rq->lock);
-
-	if (unlikely(head->next))
-		return;
-
-	head->func = (void (*)(struct callback_head *))func;
-	head->next = rq->balance_callback;
-	rq->balance_callback = head;
-}
 
 #define rcu_dereference_check_sched_domain(p) \
 	rcu_dereference_check((p), \
@@ -792,7 +746,6 @@ extern unsigned int sched_downmigrate;
 extern unsigned int sched_init_task_load_pelt;
 extern unsigned int sched_init_task_load_windows;
 extern unsigned int sched_heavy_task;
-extern unsigned int up_down_migrate_scale_factor;
 
 extern void reset_cpu_hmp_stats(int cpu, int reset_cra);
 extern void fixup_nr_big_small_task(int cpu, int reset_stats);
@@ -801,7 +754,6 @@ extern void sched_account_irqtime(int cpu, struct task_struct *curr,
 				 u64 delta, u64 wallclock);
 unsigned int cpu_temp(int cpu);
 extern unsigned int nr_eligible_big_tasks(int cpu);
-extern void update_up_down_migrate(void);
 
 /*
  * 'load' is in reference to "best cpu" at its best frequency.
@@ -990,7 +942,6 @@ extern void check_for_migration(struct rq *rq, struct task_struct *p);
 extern void pre_big_small_task_count_change(const struct cpumask *cpus);
 extern void post_big_small_task_count_change(const struct cpumask *cpus);
 extern void set_hmp_defaults(void);
-extern int power_delta_exceeded(unsigned int cpu_cost, unsigned int base_cost);
 extern unsigned int power_cost_at_freq(int cpu, unsigned int freq);
 extern void reset_all_window_stats(u64 window_start, unsigned int window_size);
 extern void boost_kick(int cpu);
@@ -1205,10 +1156,9 @@ static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
 	 * After ->on_cpu is cleared, the task can be moved to a different CPU.
 	 * We must ensure this doesn't happen until the switch is completely
 	 * finished.
-	 *
-	 * Pairs with the control dependency and rmb in try_to_wake_up().
 	 */
-	smp_store_release(&prev->on_cpu, 0);
+	smp_wmb();
+	prev->on_cpu = 0;
 #endif
 #ifdef CONFIG_DEBUG_SPINLOCK
 	/* this is a valid case when another task releases the spinlock */
@@ -1259,7 +1209,6 @@ static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
 #define WF_SYNC		0x01		/* waker goes to sleep after wakeup */
 #define WF_FORK		0x02		/* child wakeup after fork */
 #define WF_MIGRATED	0x4		/* internal use, task got migrated */
-#define WF_NO_NOTIFIER	0x08		/* do not notify governor */
 
 static inline void update_load_add(struct load_weight *lw, unsigned long inc)
 {
@@ -1339,10 +1288,8 @@ static const u32 prio_to_wmult[40] = {
 #else
 #define ENQUEUE_WAKING		0
 #endif
-#define ENQUEUE_MIGRATING	8
 
 #define DEQUEUE_SLEEP		1
-#define DEQUEUE_MIGRATING	2
 
 struct sched_class {
 	const struct sched_class *next;
@@ -1362,6 +1309,7 @@ struct sched_class {
 	void (*migrate_task_rq)(struct task_struct *p, int next_cpu);
 
 	void (*pre_schedule) (struct rq *this_rq, struct task_struct *task);
+	void (*post_schedule) (struct rq *this_rq);
 	void (*task_waking) (struct task_struct *task);
 	void (*task_woken) (struct rq *this_rq, struct task_struct *task);
 
@@ -1456,33 +1404,26 @@ static inline u64 steal_ticks(u64 steal)
 }
 #endif
 
-static inline void add_nr_running(struct rq *rq, unsigned count)
+static inline void inc_nr_running(struct rq *rq)
 {
-	unsigned prev_nr = rq->nr_running;
-	sched_update_nr_prod(cpu_of(rq), count, true);
-
-	rq->nr_running = prev_nr + count;
-
-	if (prev_nr < 2 && rq->nr_running >= 2) {
-#ifdef CONFIG_SMP
-		if (!rq->rd->overload)
-			rq->rd->overload = true;
-#endif
+	sched_update_nr_prod(cpu_of(rq), 1, true);
+	rq->nr_running++;
 
 #ifdef CONFIG_NO_HZ_FULL
+	if (rq->nr_running == 2) {
 		if (tick_nohz_full_cpu(rq->cpu)) {
 			/* Order rq->nr_running write against the IPI */
 			smp_wmb();
 			smp_send_reschedule(rq->cpu);
 		}
-#endif
        }
+#endif
 }
 
-static inline void sub_nr_running(struct rq *rq, unsigned count)
+static inline void dec_nr_running(struct rq *rq)
 {
-	sched_update_nr_prod(cpu_of(rq), count, false);
-	rq->nr_running -= count;
+	sched_update_nr_prod(cpu_of(rq), 1, false);
+	rq->nr_running--;
 }
 
 static inline void rq_last_tick_reset(struct rq *rq)
