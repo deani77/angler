@@ -15,7 +15,7 @@ DTBIMAGE="dtb"
 DEFCONFIG="kylo_defconfig"
 
 # Kernel Details
-VER=".R8.angler."
+VER=".R9.angler."
 
 # Paths
 KERNEL_DIR=`pwd`
@@ -96,7 +96,7 @@ case "$echoice" in
 		;;
 	3 )
 		export CROSS_COMPILE=${HOME}/android/uberbuild/out/aarch64-linux-android-6.x/bin/aarch64-linux-android-
-		TC="UBER6.0"
+		TC="UBER6.X"
 		echo
 		echo "Using UBERTC 6.0"
 		break
@@ -132,12 +132,12 @@ done
 
 # Vars
 BASE_AK_VER="Kylo"
-AK_VER="$BASE_AK_VER$VER$TC"
+AK_VER="$BASE_AK_VER$VER"
 export LOCALVERSION=~`echo $AK_VER`
 export LOCALVERSION=~`echo $AK_VER`
 export ARCH=arm64
 export SUBARCH=arm64
-export KBUILD_BUILD_USER=mdalexca
+export KBUILD_BUILD_USER=DespairFactor
 export KBUILD_BUILD_HOST=DarkRoom
 
 echo
