@@ -15,7 +15,7 @@ DTBIMAGE="dtb"
 DEFCONFIG="kylo_defconfig"
 
 # Kernel Details
-VER=".R11.angler."
+VER=".R12.angler."
 
 # Paths
 KERNEL_DIR=`pwd`
@@ -41,7 +41,7 @@ function make_kernel {
 		echo
 		make $DEFCONFIG
 		make $THREAD
-		
+
 }
 
 function make_modules {
@@ -55,7 +55,7 @@ function make_dtb {
 
 function make_boot {
 		cp -vr $ZIMAGE_DIR/Image.gz-dtb ~/android/angler/out/kernel/zImage
-		
+
 		. appendramdisk.sh
 }
 
@@ -197,4 +197,3 @@ DATE_END=$(date +"%s")
 DIFF=$(($DATE_END - $DATE_START))
 echo "Time: $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds."
 echo
-
