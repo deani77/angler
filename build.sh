@@ -15,7 +15,7 @@ DTBIMAGE="dtb"
 DEFCONFIG="kylo_defconfig"
 
 # Kernel Details
-VER=".R13.angler."
+VER=".R14.angler."
 
 # Paths
 KERNEL_DIR=`pwd`
@@ -55,8 +55,6 @@ function make_dtb {
 
 function make_boot {
 		cp -vr $ZIMAGE_DIR/Image.gz-dtb ~/android/angler/out/kernel/zImage
-
-		. appendramdisk.sh
 }
 
 
